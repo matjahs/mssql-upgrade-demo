@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-bootstrap
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argocd-bootstrap
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apiextensions.k8s.io
+    resources:
+      - customresourcedefinitions
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - argoproj.io
+    resources:
+      - applications
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - patch
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-bootstrap
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argocd-bootstrap
+subjects:
+  - kind: ServiceAccount
+    name: argocd-bootstrap
+    namespace: default
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: argocd-bootstrap
+  namespace: default
+spec:
+  backoffLimit: 12
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      serviceAccountName: argocd-bootstrap
+      restartPolicy: OnFailure
+      containers:
+        - name: kubectl
+          image: docker.io/bitnami/kubectl:1.35.0
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              until kubectl get namespace argocd >/dev/null 2>&1; do
+                sleep 5
+              done
+
+              until kubectl get crd applications.argoproj.io >/dev/null 2>&1; do
+                sleep 5
+              done
+
+              kubectl -n argocd wait --for=condition=Available deploy/argocd-application-controller --timeout=10m
+
+              kubectl apply -f https://raw.githubusercontent.com/matjahs/mssql-upgrade-demo/main/argocd/mssql-application.yaml

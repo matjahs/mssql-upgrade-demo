@@ -8,6 +8,7 @@ patches:
       cluster:
         extraManifests:
           - https://raw.githubusercontent.com/argoproj/argo-cd/v3.3.6/manifests/install.yaml
+          - https://raw.githubusercontent.com/matjahs/mssql-upgrade-demo/main/bootstrap/argocd-bootstrap-job.yaml
 talos:
   version: v1.12.6
 ---
