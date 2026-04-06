@@ -1,0 +1,28 @@
+kind: Cluster
+kubernetes:
+  version: v1.35.3
+name: mssql-demo
+patches:
+  - name: bootstrap-argocd
+    inline:
+      cluster:
+        extraManifests:
+          - https://raw.githubusercontent.com/argoproj/argo-cd/v3.3.6/manifests/install.yaml
+talos:
+  version: v1.12.6
+---
+kind: ControlPlane
+machineClass:
+  name: vsphere-small
+  size: 3
+patches:
+- inline:
+    cluster:
+      allowSchedulingOnControlPlanes: true
+  name: cp-schedulable
+---
+kind: Workers
+name: worker
+machineClass:
+  name: vsphere-small
+  size: 2
