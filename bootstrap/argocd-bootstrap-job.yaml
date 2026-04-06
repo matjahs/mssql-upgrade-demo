@@ -72,25 +72,22 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: kubectl
-          image: docker.io/bitnami/kubectl:1.35.0
+          image: registry.k8s.io/kubectl:v1.35.0
           command:
             - /bin/sh
             - -ec
             - |
-              until kubectl get namespace argocd >/dev/null 2>&1; do
-                sleep 5
-              done
               until kubectl get crd applications.argoproj.io >/dev/null 2>&1; do
                 sleep 5
               done
 
-              kubectl -n argocd wait --for=condition=Available deploy/argocd-application-controller --timeout=10m
+              kubectl -n default wait --for=condition=Available deploy/argocd-application-controller --timeout=10m
 
-              until kubectl -n argocd get service argocd-server >/dev/null 2>&1; do
+              until kubectl -n default get service argocd-server >/dev/null 2>&1; do
                 sleep 5
               done
 
-              kubectl -n argocd annotate service argocd-server \
+              kubectl -n default annotate service argocd-server \
                 omni-kube-service-exposer.sidero.dev/port="53001" \
                 omni-kube-service-exposer.sidero.dev/label="Argo CD" \
                 omni-kube-service-exposer.sidero.dev/prefix="argocd" \
