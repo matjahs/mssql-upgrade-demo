@@ -30,3 +30,5 @@ name: worker
 machineClass:
   name: vsphere-small
   size: 2
+patches:
+  - file: infrastructure/patches/local-path-provisioner-volume.yaml
