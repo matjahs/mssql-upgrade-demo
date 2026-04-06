@@ -80,11 +80,20 @@ spec:
               until kubectl get namespace argocd >/dev/null 2>&1; do
                 sleep 5
               done
-
               until kubectl get crd applications.argoproj.io >/dev/null 2>&1; do
                 sleep 5
               done
 
               kubectl -n argocd wait --for=condition=Available deploy/argocd-application-controller --timeout=10m
 
-              kubectl apply -f https://raw.githubusercontent.com/matjahs/mssql-upgrade-demo/main/argocd/mssql-application.yaml
+              until kubectl -n argocd get service argocd-server >/dev/null 2>&1; do
+                sleep 5
+              done
+
+              kubectl -n argocd annotate service argocd-server \
+                omni-kube-service-exposer.sidero.dev/port="53001" \
+                omni-kube-service-exposer.sidero.dev/label="Argo CD" \
+                omni-kube-service-exposer.sidero.dev/prefix="argocd" \
+                --overwrite
+
+              kubectl apply -f https://raw.githubusercontent.com/matjahs/mssql-upgrade-demo/main/argocd/root-application.yaml

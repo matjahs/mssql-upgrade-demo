@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+vars:
+  GREETING: Hello, world!
+
+tasks:
+  create:
+    desc: Create the cluster and deploy the applications
+    cmds:
+      - task: create-cluster
+      - task: deploy-applications
+    silent: true
+  create-cluster:
+    desc: Create the cluster using Talos
+    cmds:
+      - talosctl cluster create -f infrastructure/cluster-template.yaml --talosconfig talosconfig
+  deploy-applications:
+    desc: Deploy the applications using ArgoCD
+    cmds:
+      - kubectl apply -f argocd/root-application.yaml

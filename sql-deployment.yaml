@@ -72,6 +72,13 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/opt/mssql
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "1"
       volumes:
         - name: data
           persistentVolumeClaim:

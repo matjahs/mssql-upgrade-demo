@@ -1,7 +1,9 @@
 kind: Cluster
 kubernetes:
   version: v1.35.3
-name: mssql-demo
+name: demo
+features:
+  enableWorkloadProxy: true
 patches:
   - name: bootstrap-argocd
     inline:
