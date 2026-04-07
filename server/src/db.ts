@@ -11,6 +11,19 @@ type DbConfig = {
 let adminPoolPromise: Promise<sql.ConnectionPool> | null = null;
 let appPoolPromise: Promise<sql.ConnectionPool> | null = null;
 
+async function closePool(poolPromise: Promise<sql.ConnectionPool> | null): Promise<void> {
+  if (!poolPromise) {
+    return;
+  }
+
+  try {
+    const pool = await poolPromise;
+    await pool.close();
+  } catch {
+    // Ignore connection and shutdown errors during cleanup.
+  }
+}
+
 function getConfig(): DbConfig {
   return {
     host: process.env.MSSQL_HOST ?? '127.0.0.1',
@@ -66,6 +79,16 @@ export function getAdminPool(): Promise<sql.ConnectionPool> {
 
 export function getAppPool(): Promise<sql.ConnectionPool> {
   return memoizePool(appPoolPromise, (value) => (appPoolPromise = value), getConfig().database);
+}
+
+export async function closePools(): Promise<void> {
+  const adminPool = adminPoolPromise;
+  const appPool = appPoolPromise;
+
+  adminPoolPromise = null;
+  appPoolPromise = null;
+
+  await Promise.all([closePool(adminPool), closePool(appPool)]);
 }
 
 export async function isDatabaseReady(): Promise<boolean> {

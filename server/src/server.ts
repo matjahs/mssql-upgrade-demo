@@ -1,8 +1,9 @@
+import type { Server } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { initializeDb } from './init.js';
-import { createProduct, deleteProduct, isDatabaseReady, listProducts } from './db.js';
+import { closePools, createProduct, deleteProduct, isDatabaseReady, listProducts } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -94,12 +95,64 @@ if (isProduction) {
   });
 }
 
+let server: Server | null = null;
+let shuttingDown = false;
+
+async function shutdown(signal: 'SIGINT' | 'SIGTERM'): Promise<void> {
+  if (shuttingDown) {
+    return;
+  }
+
+  shuttingDown = true;
+  console.log(`Received ${signal}, shutting down...`);
+
+  const forceExitTimer = setTimeout(() => {
+    console.error('Shutdown timed out, forcing exit');
+    process.exit(1);
+  }, 10_000);
+
+  forceExitTimer.unref();
+
+  try {
+    await Promise.allSettled([
+      new Promise<void>((resolve, reject) => {
+        if (!server) {
+          resolve();
+          return;
+        }
+
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      }),
+      closePools(),
+    ]);
+  } finally {
+    clearTimeout(forceExitTimer);
+    process.exit(0);
+  }
+}
+
+process.on('SIGINT', () => {
+  void shutdown('SIGINT');
+});
+
+process.on('SIGTERM', () => {
+  void shutdown('SIGTERM');
+});
+
 try {
   await initializeDb();
-  app.listen(port, () => {
+  server = app.listen(port, () => {
     console.log(`Server is running on port http://127.0.0.1:${port}`);
   });
 } catch (error) {
   console.error('Failed to initialize database', error);
+  await closePools();
   process.exit(1);
 }

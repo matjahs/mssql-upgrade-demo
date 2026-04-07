@@ -1,0 +1,16 @@
+body {
+  background: #f8f9fa;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.table th,
+.table td {
+  vertical-align: middle;
+}
+
+.product-price {
+  white-space: nowrap;
+}

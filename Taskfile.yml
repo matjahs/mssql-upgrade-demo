@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+vars:
+  GREETING: Hello, world!
+
+tasks:
+  build:
+    cmds:
+      - npm run build
+
+  build:image:
+    cmds:
+      - docker build -t demo-app:latest .
+  
+  run:image:
+    cmds:
+      - docker build -t demo-app:latest .
+      - docker run --rm -p 3000:3000 -e MSSQL_HOST=10.1.1.234 -e MSSQL_PORT=1433 -e MSSQL_USER=sa -e MSSQL_PASSWORD='ReplaceWithAStrongPassword123!' -e MSSQL_DATABASE=demoapp demo-app:latest
+      
