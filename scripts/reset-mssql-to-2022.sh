@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+EXPECTED_IMAGE="mcr.microsoft.com/mssql/server:2022-latest"
+UPGRADE_IMAGE="mcr.microsoft.com/mssql/server:2025-latest"
+WORKLOAD_FILE="workloads/mssql/sql-deployment.yaml"
+NAMESPACE_FILE="workloads/mssql/sql-namespace.yaml"
+SQL_NAMESPACE="sql-demo"
+DEPLOYMENT_NAME="mssql"
+PVC_NAME="mssql-data"
+ARGO_NAMESPACE="argocd"
+ARGO_APP="mssql-demo"
+
+auto_sync_was_enabled=0
+reset_succeeded=0
+assume_yes=0
+
+usage() {
+	cat <<'EOF'
+Reset the MSSQL demo back to a fresh SQL Server 2022 state.
+
+This script:
+1. Reverts the latest commit that upgraded MSSQL to 2025
+2. Pushes the revert commit to the current branch's origin
+3. Temporarily disables ArgoCD auto-sync
+4. Deletes the MSSQL deployment and PVC
+5. Reapplies the 2022 manifests and waits for rollout
+6. Re-enables ArgoCD auto-sync on success
+
+The PVC reset destroys the current SQL data.
+
+Usage:
+  ./scripts/reset-mssql-to-2022.sh [--yes]
+
+Options:
+  --yes    Skip the confirmation prompt
+EOF
+}
+
+die() {
+	printf 'Error: %s\n' "$*" >&2
+	exit 1
+}
+
+require_cmd() {
+	command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
+}
+
+current_image() {
+	awk '/image:/ { print $2; exit }' "$WORKLOAD_FILE"
+}
+
+cleanup() {
+	if [[ "$reset_succeeded" -eq 1 ]]; then
+		return
+	fi
+
+	if [[ "$auto_sync_was_enabled" -eq 1 ]]; then
+		printf 'Reset failed. ArgoCD auto-sync is still disabled for %s/%s.\n' "$ARGO_NAMESPACE" "$ARGO_APP" >&2
+		printf 'Fix the issue, then re-enable it with:\n' >&2
+		printf 'kubectl patch application %s -n %s --type=merge -p '\''{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'\''\n' "$ARGO_APP" "$ARGO_NAMESPACE" >&2
+	fi
+}
+
+trap cleanup EXIT
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--yes)
+		assume_yes=1
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		usage >&2
+		die "Unknown argument: $1"
+		;;
+	esac
+	shift
+done
+
+require_cmd git
+require_cmd kubectl
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "Run this script inside the git repository"
+cd "$repo_root"
+
+[[ -f "$WORKLOAD_FILE" ]] || die "Missing workload file: $WORKLOAD_FILE"
+[[ -f "$NAMESPACE_FILE" ]] || die "Missing namespace file: $NAMESPACE_FILE"
+
+branch="$(git branch --show-current)"
+[[ -n "$branch" ]] || die "Could not determine current git branch"
+
+[[ -z "$(git status --porcelain --untracked-files=all)" ]] || die "Working tree is not clean. Commit, stash, or remove local changes first."
+
+if [[ "$assume_yes" -ne 1 ]]; then
+	printf 'This will revert the latest MSSQL 2025 upgrade commit, push %s to origin, and delete PVC %s/%s. Continue? [y/N] ' "$branch" "$SQL_NAMESPACE" "$PVC_NAME"
+	read -r reply
+	if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+		printf 'Cancelled.\n'
+		exit 0
+	fi
+fi
+
+if kubectl get application "$ARGO_APP" -n "$ARGO_NAMESPACE" -o jsonpath='{.spec.syncPolicy.automated}' >/dev/null 2>&1; then
+	auto_sync_payload="$(kubectl get application "$ARGO_APP" -n "$ARGO_NAMESPACE" -o jsonpath='{.spec.syncPolicy.automated}')"
+	if [[ -n "$auto_sync_payload" ]]; then
+		auto_sync_was_enabled=1
+		kubectl patch application "$ARGO_APP" -n "$ARGO_NAMESPACE" --type=json -p='[{"op":"remove","path":"/spec/syncPolicy/automated"}]' >/dev/null
+	fi
+fi
+
+if [[ "$(current_image)" != "$EXPECTED_IMAGE" ]]; then
+	upgrade_commit="$(git log --format=%H -G "$UPGRADE_IMAGE" -n 1 -- "$WORKLOAD_FILE")"
+	[[ -n "$upgrade_commit" ]] || die "Could not find an upgrade commit to revert"
+
+	printf 'Reverting upgrade commit %s\n' "$upgrade_commit"
+	git revert --no-edit "$upgrade_commit"
+fi
+
+[[ "$(current_image)" == "$EXPECTED_IMAGE" ]] || die "Expected $WORKLOAD_FILE to use $EXPECTED_IMAGE after revert"
+
+printf 'Pushing %s to origin\n' "$branch"
+git push origin "$branch"
+
+printf 'Resetting live MSSQL deployment and PVC\n'
+kubectl delete deployment "$DEPLOYMENT_NAME" -n "$SQL_NAMESPACE" --ignore-not-found --wait=true
+kubectl delete pvc "$PVC_NAME" -n "$SQL_NAMESPACE" --ignore-not-found --wait=true
+
+kubectl apply -f "$NAMESPACE_FILE"
+kubectl apply -f "$WORKLOAD_FILE"
+kubectl rollout status deployment/"$DEPLOYMENT_NAME" -n "$SQL_NAMESPACE" --timeout=300s
+
+if [[ "$auto_sync_was_enabled" -eq 1 ]]; then
+	kubectl patch application "$ARGO_APP" -n "$ARGO_NAMESPACE" --type=merge -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}' >/dev/null
+fi
+
+reset_succeeded=1
+
+kubectl get pods -n "$SQL_NAMESPACE"
+kubectl get pvc -n "$SQL_NAMESPACE"
+
+printf 'MSSQL demo reset to SQL Server 2022.\n'
