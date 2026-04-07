@@ -5,11 +5,39 @@ export interface Product {
   created_at: string;
 }
 
+export interface ServerVersionResponse {
+  version: string;
+}
+
+export interface ReadyResponse {
+  ok: boolean;
+}
+
 export async function getProducts(): Promise<Product[]> {
   const response = await fetch(`/api/products`);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch products: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function getServerVersion(): Promise<ServerVersionResponse> {
+  const response = await fetch(`/api/server-version`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch server version: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function getConnectionStatus(): Promise<ReadyResponse> {
+  const response = await fetch(`/readyz`);
+
+  if (!response.ok) {
+    throw new Error(`Backend is not ready: ${response.status} ${response.statusText}`);
   }
 
   return response.json();
@@ -42,4 +70,3 @@ export async function deleteProduct(id: number): Promise<void> {
     throw new Error(`Failed to delete product: ${errorData.error || response.statusText}`);
   }
 }
-

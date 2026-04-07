@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { initializeDb } from './init.js';
-import { closePools, createProduct, deleteProduct, isDatabaseReady, listProducts } from './db.js';
+import { closePools, createProduct, deleteProduct, getServerVersion, isDatabaseReady, listProducts } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,6 +39,16 @@ app.get(`/api/products`, async (_req, res) => {
   } catch (error) {
     console.error('failed to list products', error);
     res.status(500).json({ error: 'Failed to list products' });
+  }
+});
+
+app.get(`/api/server-version`, async (_req, res) => {
+  try {
+    const version = await getServerVersion();
+    res.json({ version });
+  } catch (error) {
+    console.error('failed to load server version', error);
+    res.status(500).json({ error: 'Failed to load server version' });
   }
 });
 

@@ -115,6 +115,13 @@ export async function listProducts() {
   return result.recordset;
 }
 
+export async function getServerVersion(): Promise<string> {
+  const pool = await getAppPool();
+  const result = await pool.request().query("SELECT @@VERSION AS version");
+
+  return String(result.recordset[0]?.version ?? 'Unknown SQL Server version');
+}
+
 export interface Product {
   id: number;
   name: string;
