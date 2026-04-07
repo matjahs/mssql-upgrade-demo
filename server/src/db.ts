@@ -1,7 +1,4 @@
 import sql from 'mssql';
-import {config} from 'dotenv';
-
-config({ path: '../.env' });
 
 type DbConfig = {
   host: string;
@@ -15,33 +12,22 @@ let adminPoolPromise: Promise<sql.ConnectionPool> | null = null;
 let appPoolPromise: Promise<sql.ConnectionPool> | null = null;
 
 function getConfig(): DbConfig {
-  const cfg = {
-    host: process.env.DB_HOST ?? '127.0.0.1',
-    port: Number(process.env.DB_PORT ?? 1433),
+  return {
+    host: process.env.MSSQL_HOST ?? '127.0.0.1',
+    port: Number(process.env.MSSQL_PORT ?? 1433),
     user: process.env.MSSQL_USER ?? 'sa',
     password: process.env.MSSQL_PASSWORD ?? '',
-    database: process.env.MSSQL_DATABASE ?? 'master',
+    database: process.env.MSSQL_DATABASE ?? 'demoapp',
   };
-
-  // output config for debugging purposes
-  console.log('Database configuration:');
-  console.log(`  Host: ${cfg.host}`);
-  console.log(`  Port: ${cfg.port}`);
-  console.log(`  User: ${cfg.user}`);
-  console.log(`  Database: ${cfg.database}`);
-
-  return cfg;
 }
 
-
-async function createPool(database: string): Promise<sql.ConnectionPool> {
-  const config = getConfig();
-  
+async function connectPool(database: string): Promise<sql.ConnectionPool> {
+  const cfg = getConfig();
   const pool = new sql.ConnectionPool({
-    server: config.host,
-    port: config.port,
-    user: config.user,
-    password: config.password,
+    server: cfg.host,
+    port: cfg.port,
+    user: cfg.user,
+    password: cfg.password,
     database,
     options: {
       encrypt: false,
@@ -52,26 +38,34 @@ async function createPool(database: string): Promise<sql.ConnectionPool> {
       min: 0,
       idleTimeoutMillis: 30000,
     },
-  });
- 
-  return pool.connect();
-};
+   });
 
-export function getAdminPool(): Promise<sql.ConnectionPool> {
-  if (!adminPoolPromise) {
-    adminPoolPromise = createPool('master');
+  return pool.connect();
+}
+
+function memoizePool(
+  current: Promise<sql.ConnectionPool> | null,
+  set: (value: Promise<sql.ConnectionPool> | null) => void,
+  database: string
+): Promise<sql.ConnectionPool> {
+  if (!current) {
+    const promise = connectPool(database).catch((error) => {
+      set(null);
+      throw error;
+    });
+    set(promise);
+    return promise;
   }
 
-  return adminPoolPromise;
+  return current;
+}
+
+export function getAdminPool(): Promise<sql.ConnectionPool> {
+  return memoizePool(adminPoolPromise, (value) => (adminPoolPromise = value), 'master');
 }
 
 export function getAppPool(): Promise<sql.ConnectionPool> {
-  if (!appPoolPromise) {
-    const config = getConfig();
-    appPoolPromise = createPool(config.database);
-  }
-  
-  return appPoolPromise;
+  return memoizePool(appPoolPromise, (value) => (appPoolPromise = value), getConfig().database);
 }
 
 export async function isDatabaseReady(): Promise<boolean> {
@@ -123,7 +117,7 @@ export async function createProduct(name: string, price: number): Promise<Produc
 export async function deleteProduct(id: number): Promise<boolean> {
   const pool = await getAppPool();
 
-  const reuslt = await pool
+  const result = await pool
   .request()
   .input('id', sql.Int, id)
   .query(`
@@ -131,5 +125,5 @@ export async function deleteProduct(id: number): Promise<boolean> {
     WHERE id = @id;
   `);
 
-  return reuslt.rowsAffected[0] > 0;
+  return result.rowsAffected[0] > 0;
 }

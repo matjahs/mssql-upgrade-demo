@@ -27,9 +27,9 @@ async function ensureSchemaExists() {
   const appPool = await getAppPool();
 
   await appPool.request().query(`
-    IF OBJECT_ID(N'dbo.Products', N'U') IS NULL
+    IF OBJECT_ID(N'dbo.products', N'U') IS NULL
     BEGIN
-      CREATE TABLE dbo.Products (
+      CREATE TABLE dbo.products (
         id INT IDENTITY(1,1) PRIMARY KEY,
         name NVARCHAR(255) NOT NULL,
         price DECIMAL(18, 2) NOT NULL,
@@ -43,9 +43,9 @@ async function ensureSeedData() {
   const appPool = await getAppPool();
 
   await appPool.request().query(`
-    IF NOT EXISTS (SELECT 1 FROM dbo.Products)
+    IF NOT EXISTS (SELECT 1 FROM dbo.products)
     BEGIN
-      INSERT INTO dbo.Products (name, price)
+      INSERT INTO dbo.products (name, price)
       VALUES
         (N'Product 1', 9.99),
         (N'Product 2', 19.99);
@@ -53,7 +53,7 @@ async function ensureSeedData() {
   `);
 }
 
-export async function initializeDb(retries = 3, delay = 3000): Promise<void> {
+export async function initializeDb(retries = 20, delay = 3000): Promise<void> {
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= retries; attempt += 1) {
