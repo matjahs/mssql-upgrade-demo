@@ -4,18 +4,25 @@ version: '3'
 
 vars:
   GREETING: Hello, world!
+  DEMO_BASELINE_TAG: demo-start-2022
 
 tasks:
-  build:
+  create:
+    desc: Create the cluster and deploy the applications
     cmds:
-      - npm run build
-
-  build:image:
+      - task: create-cluster
+      - task: deploy-applications
+    silent: true
+  create-cluster:
+    desc: Create the cluster using Talos
     cmds:
-      - docker build -t demo-app:latest .
-  
-  run:image:
+      - talosctl cluster create -f infrastructure/cluster-template.yaml --talosconfig talosconfig
+  deploy-applications:
+    desc: Deploy the applications using ArgoCD
     cmds:
-      - docker build -t demo-app:latest .
-      - docker run --rm -p 3000:3000 -e MSSQL_HOST=10.1.1.234 -e MSSQL_PORT=1433 -e MSSQL_USER=sa -e MSSQL_PASSWORD='ReplaceWithAStrongPassword123!' -e MSSQL_DATABASE=demoapp demo-app:latest
-      
+      - kubectl apply -f argocd/root-application.yaml
+  reset-demo:
+    desc: Check out the demo baseline tag in detached HEAD
+    cmds:
+      - git fetch --tags
+      - git switch --detach {{.DEMO_BASELINE_TAG}}

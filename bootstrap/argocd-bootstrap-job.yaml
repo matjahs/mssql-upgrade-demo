@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-bootstrap
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-bootstrap
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: argocd-bootstrap
+    namespace: kube-system
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: argocd-bootstrap
+  namespace: kube-system
+spec:
+  backoffLimit: 12
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      serviceAccountName: argocd-bootstrap
+      restartPolicy: OnFailure
+      containers:
+        - name: kubectl
+          image: bitnami/kubectl:latest
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              kubectl get namespace argocd >/dev/null 2>&1 || kubectl create namespace argocd
+
+              kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.3.6/manifests/install.yaml
+              kubectl apply -f https://raw.githubusercontent.com/matjahs/mssql-upgrade-demo/main/bootstrap/argocd-install-fixes.yaml
+
+              until kubectl get crd applications.argoproj.io >/dev/null 2>&1; do
+                sleep 5
+              done
+
+              until kubectl -n argocd get service argocd-server >/dev/null 2>&1; do
+                sleep 5
+              done
+
+              kubectl -n argocd rollout restart deploy/argocd-server
+              kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=10m
+              kubectl -n argocd rollout status deploy/argocd-server --timeout=10m
+
+              kubectl apply -f https://raw.githubusercontent.com/matjahs/mssql-upgrade-demo/main/bootstrap/argocd-service-exposure.yaml
+              kubectl apply -f https://raw.githubusercontent.com/matjahs/mssql-upgrade-demo/main/argocd/root-application.yaml

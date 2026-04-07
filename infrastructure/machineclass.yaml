@@ -1,0 +1,18 @@
+metadata:
+  namespace: default
+  type: MachineClasses.omni.sidero.dev
+  id: vsphere-small
+spec:
+  autoprovision:
+    providerid: vsphere
+    providerdata: |
+      cpu: 2
+      memory: 8192
+      disk_size: 10
+      network: "vmmgmt-vds01-mgmt-01a"
+      datastore: "vsan-mgmt-01a"
+      datacenter: "dc-a"
+      resource_pool: "talos"
+      template: "talos-template"
+      folder: "talos"
+      
