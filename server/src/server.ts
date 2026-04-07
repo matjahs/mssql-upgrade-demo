@@ -1,4 +1,7 @@
 import express from 'express';
+import { initializeDb } from './init.js';
+//import { createProduct, deleteProduct, listProducts, isDatabaseReady } from './db.js';
+import { isDatabaseReady } from './db.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
@@ -9,7 +12,14 @@ app.get(`/healthz`, (_req, res) => {
   res.status(200).json({ ok: true });
 });
 
-app.get(`/readyz`, (_req, res) => {
+app.get(`/readyz`, async (_req, res) => {
+  const ready = await isDatabaseReady();
+
+  if (!ready) {
+    res.status(503).json({ ok: false });
+    return;
+  }
+
   res.status(200).json({ ok: true });
 });
 
@@ -44,6 +54,7 @@ app.delete(`/api/products/:id`, (req, res) => {
   return res.status(204).send();
 });
 
+await initializeDb();
 app.listen(port, () => {
   console.log(`Server is running on port http://127.0.0.1:${port}`);
 });
