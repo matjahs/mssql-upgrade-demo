@@ -52,9 +52,17 @@ spec:
       labels:
         app: mssql
     spec:
+      securityContext:
+        fsGroup: 10001
+      terminationGracePeriodSeconds: 120
       containers:
         - name: mssql
           image: mcr.microsoft.com/mssql/server:2022-latest
+          securityContext:
+            runAsUser: 10001
+            capabilities:
+              add:
+                - SYS_PTRACE
           lifecycle:
             preStop:
               exec:
