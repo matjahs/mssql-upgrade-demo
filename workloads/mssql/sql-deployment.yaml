@@ -106,11 +106,11 @@ spec:
               mountPath: /var/opt/mssql
           resources:
             requests:
-              memory: "2Gi"
-              cpu: "500m"
+              memory: "3Gi"
+              cpu: "1500m"
             limits:
               memory: "4Gi"
-              cpu: "1"
+              cpu: "2000m"
       volumes:
         - name: data
           persistentVolumeClaim:
