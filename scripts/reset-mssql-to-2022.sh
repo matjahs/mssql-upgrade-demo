@@ -10,8 +10,10 @@ SQL_NAMESPACE="sql-demo"
 DEPLOYMENT_NAME="mssql"
 PVC_NAME="mssql-data"
 ARGO_NAMESPACE="argocd"
+ROOT_ARGO_APP="root-apps"
 ARGO_APP="mssql-demo"
 
+root_auto_sync_was_enabled=0
 auto_sync_was_enabled=0
 reset_succeeded=0
 assume_yes=0
@@ -23,7 +25,7 @@ Reset the MSSQL demo back to a fresh SQL Server 2022 state.
 This script:
 1. Reverts the latest commit that upgraded MSSQL to 2025
 2. Pushes the revert commit to the current branch's origin
-3. Temporarily disables ArgoCD auto-sync
+3. Temporarily disables ArgoCD auto-sync for the app-of-apps and MSSQL app
 4. Deletes the MSSQL deployment and PVC
 5. Reapplies the 2022 manifests and waits for rollout
 6. Re-enables ArgoCD auto-sync on success
@@ -56,9 +58,10 @@ cleanup() {
 		return
 	fi
 
-	if [[ "$auto_sync_was_enabled" -eq 1 ]]; then
-		printf 'Reset failed. ArgoCD auto-sync is still disabled for %s/%s.\n' "$ARGO_NAMESPACE" "$ARGO_APP" >&2
-		printf 'Fix the issue, then re-enable it with:\n' >&2
+	if [[ "$root_auto_sync_was_enabled" -eq 1 || "$auto_sync_was_enabled" -eq 1 ]]; then
+		printf 'Reset failed. ArgoCD auto-sync may still be disabled.\n' >&2
+		printf 'Re-enable it with:\n' >&2
+		printf 'kubectl patch application %s -n %s --type=merge -p '\''{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'\''\n' "$ROOT_ARGO_APP" "$ARGO_NAMESPACE" >&2
 		printf 'kubectl patch application %s -n %s --type=merge -p '\''{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'\''\n' "$ARGO_APP" "$ARGO_NAMESPACE" >&2
 	fi
 }
@@ -105,6 +108,14 @@ if [[ "$assume_yes" -ne 1 ]]; then
 	fi
 fi
 
+if kubectl get application "$ROOT_ARGO_APP" -n "$ARGO_NAMESPACE" -o jsonpath='{.spec.syncPolicy.automated}' >/dev/null 2>&1; then
+	root_auto_sync_payload="$(kubectl get application "$ROOT_ARGO_APP" -n "$ARGO_NAMESPACE" -o jsonpath='{.spec.syncPolicy.automated}')"
+	if [[ -n "$root_auto_sync_payload" ]]; then
+		root_auto_sync_was_enabled=1
+		kubectl patch application "$ROOT_ARGO_APP" -n "$ARGO_NAMESPACE" --type=json -p='[{"op":"remove","path":"/spec/syncPolicy/automated"}]' >/dev/null
+	fi
+fi
+
 if kubectl get application "$ARGO_APP" -n "$ARGO_NAMESPACE" -o jsonpath='{.spec.syncPolicy.automated}' >/dev/null 2>&1; then
 	auto_sync_payload="$(kubectl get application "$ARGO_APP" -n "$ARGO_NAMESPACE" -o jsonpath='{.spec.syncPolicy.automated}')"
 	if [[ -n "$auto_sync_payload" ]]; then
@@ -136,6 +147,10 @@ kubectl rollout status deployment/"$DEPLOYMENT_NAME" -n "$SQL_NAMESPACE" --timeo
 
 if [[ "$auto_sync_was_enabled" -eq 1 ]]; then
 	kubectl patch application "$ARGO_APP" -n "$ARGO_NAMESPACE" --type=merge -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}' >/dev/null
+fi
+
+if [[ "$root_auto_sync_was_enabled" -eq 1 ]]; then
+	kubectl patch application "$ROOT_ARGO_APP" -n "$ARGO_NAMESPACE" --type=merge -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}' >/dev/null
 fi
 
 reset_succeeded=1
