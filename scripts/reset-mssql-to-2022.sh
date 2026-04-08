@@ -250,6 +250,15 @@ if [[ "$assume_yes" -ne 1 ]]; then
 	fi
 fi
 
+if [[ "$(current_image)" != "$EXPECTED_IMAGE" ]]; then
+	upgrade_commit="$(head_upgrade_commit)"
+
+	printf 'Reverting upgrade commit %s\n' "$upgrade_commit"
+	git revert --no-edit "$upgrade_commit"
+fi
+
+[[ "$(current_image)" == "$EXPECTED_IMAGE" ]] || die "Expected $WORKLOAD_FILE to use $EXPECTED_IMAGE after revert"
+
 if kubectl get application "$ROOT_ARGO_APP" -n "$ARGO_NAMESPACE" -o jsonpath='{.spec.syncPolicy.automated}' >/dev/null 2>&1; then
 	root_auto_sync_payload="$(kubectl get application "$ROOT_ARGO_APP" -n "$ARGO_NAMESPACE" -o jsonpath='{.spec.syncPolicy.automated}')"
 	if [[ -n "$root_auto_sync_payload" ]]; then
@@ -265,15 +274,6 @@ if kubectl get application "$ARGO_APP" -n "$ARGO_NAMESPACE" -o jsonpath='{.spec.
 		kubectl patch application "$ARGO_APP" -n "$ARGO_NAMESPACE" --type=json -p='[{"op":"remove","path":"/spec/syncPolicy/automated"}]' >/dev/null
 	fi
 fi
-
-if [[ "$(current_image)" != "$EXPECTED_IMAGE" ]]; then
-	upgrade_commit="$(head_upgrade_commit)"
-
-	printf 'Reverting upgrade commit %s\n' "$upgrade_commit"
-	git revert --no-edit "$upgrade_commit"
-fi
-
-[[ "$(current_image)" == "$EXPECTED_IMAGE" ]] || die "Expected $WORKLOAD_FILE to use $EXPECTED_IMAGE after revert"
 
 printf 'Pushing %s to origin\n' "$branch"
 git push origin "$branch"
