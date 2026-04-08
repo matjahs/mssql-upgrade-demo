@@ -10,6 +10,7 @@ SQL_NAMESPACE="sql-demo"
 DEPLOYMENT_NAME="mssql"
 PVC_NAME="mssql-data"
 APP_DB_NAME="demoapp"
+SEED_SCRIPT="scripts/seed-db.sh"
 ARGO_NAMESPACE="argocd"
 ROOT_ARGO_APP="root-apps"
 ARGO_APP="mssql-demo"
@@ -123,53 +124,6 @@ wait_for_sql_master() {
 	return 1
 }
 
-bootstrap_demo_db() {
-	local pod_name="$1"
-
-	kubectl exec -i -n "$SQL_NAMESPACE" "$pod_name" -- /bin/sh -ec '
-		tmp_file="$(mktemp)"
-		trap "rm -f \"$tmp_file\"" EXIT
-		cat >"$tmp_file"
-		/opt/mssql-tools18/bin/sqlcmd \
-			-S localhost \
-			-U sa \
-			-P "$MSSQL_SA_PASSWORD" \
-			-d master \
-			-b \
-			-No \
-			-i "$tmp_file"
-	' <<SQL
-IF DB_ID(N'$APP_DB_NAME') IS NULL
-BEGIN
-  EXEC(N'CREATE DATABASE [$APP_DB_NAME]');
-END;
-GO
-
-USE [$APP_DB_NAME];
-GO
-
-IF OBJECT_ID(N'dbo.products', N'U') IS NULL
-BEGIN
-  CREATE TABLE dbo.products (
-    id INT IDENTITY(1,1) PRIMARY KEY,
-    name NVARCHAR(255) NOT NULL,
-    price DECIMAL(18, 2) NOT NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
-  );
-END;
-GO
-
-IF NOT EXISTS (SELECT 1 FROM dbo.products)
-BEGIN
-  INSERT INTO dbo.products (name, price)
-  VALUES
-    (N'Product 1', 9.99),
-    (N'Product 2', 19.99);
-END;
-GO
-SQL
-}
-
 wait_for_demo_db() {
 	local pod_name="$1"
 	local retries=30
@@ -235,6 +189,7 @@ cd "$repo_root"
 
 [[ -f "$WORKLOAD_FILE" ]] || die "Missing workload file: $WORKLOAD_FILE"
 [[ -f "$NAMESPACE_FILE" ]] || die "Missing namespace file: $NAMESPACE_FILE"
+[[ -f "$SEED_SCRIPT" ]] || die "Missing seed script: $SEED_SCRIPT"
 
 branch="$(git branch --show-current)"
 [[ -n "$branch" ]] || die "Could not determine current git branch"
@@ -292,7 +247,7 @@ printf 'Waiting for SQL Server master database to accept connections\n'
 wait_for_sql_master "$pod_name" || die "SQL Server never became ready on master"
 
 printf 'Recreating demo database and seed data\n'
-bootstrap_demo_db "$pod_name" || die "Failed to recreate $APP_DB_NAME"
+bash "$SEED_SCRIPT" --namespace "$SQL_NAMESPACE" --pod "$pod_name" --database "$APP_DB_NAME" || die "Failed to recreate $APP_DB_NAME"
 
 printf 'Waiting for %s to become queryable\n' "$APP_DB_NAME"
 wait_for_demo_db "$pod_name" || die "$APP_DB_NAME never became queryable"
